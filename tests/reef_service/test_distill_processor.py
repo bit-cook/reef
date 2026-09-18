@@ -1,4 +1,4 @@
-"""The shared teacher-sequence processor: the student's rollout plus the teacher's prompt, one sample per report.
+"""The shared distillation processor: the student's rollout plus the teacher's prompt, one sample per report.
 
 Torch/ray free. The tokenizer is a fake that counts tokens deterministically,
 so no model files are needed; a test subclass stands in for a recipe's.
@@ -13,12 +13,12 @@ import pytest
 
 from reef.artifact.artifact import LiveWeightArtifactRef
 from reef.core import AgentRecord, RequestType
-from reef.core.chat_request import recorded_response
 from reef.core.reports import TeacherContextReport
 from reef.core.trajectories import source_record_id
 from reef.train import ProcessorContext
-from reef.train.processors import TeacherSequenceProcessor
-from reef.train.processors.teacher_sequence import TeacherPromptTokenizer
+from reef.train.processors import DistillProcessor
+from reef.train.processors.common import recorded_response
+from reef.train.processors.distill import TeacherPromptTokenizer
 from reef.train.types import TrainingBatch
 
 STUDENT_TOKENS = (5, 6, 7, 1, 2, 3)  # three prompt ids, three response ids
@@ -39,15 +39,15 @@ class CountingTokenizer(TeacherPromptTokenizer):
         return [100 + index for index in range(len(messages) + len(text) // 10)]
 
 
-class FeedbackProcessor(TeacherSequenceProcessor):
-    """A recipe's composition: the student's own answer and the context as a system message, no tools."""
+class FeedbackProcessor(DistillProcessor):
+    """A recipe's composition: the student's own answer and the teacher context as a system message, no tools."""
 
     batch_label = "feedback"
 
     def teacher_request(
-        self, messages: list[Any], tools: list[Any] | None, response: str, context: str
+        self, messages: list[Any], tools: list[Any] | None, response: str, teacher_context: str
     ) -> tuple[list[Any], list[Any] | None]:
-        system = {"role": "system", "content": f"You answered: {response}\nVerifier: {context}"}
+        system = {"role": "system", "content": f"You answered: {response}\nVerifier: {teacher_context}"}
         return [system, *messages], None
 
 
@@ -71,8 +71,10 @@ def _inference(agent_record_id: str, *, messages: list[dict[str, Any]] | None = 
     )
 
 
-def _report(agent_record_id: str, references: tuple[str, ...], context: str = "100 degrees Celsius.") -> AgentRecord:
-    body = TeacherContextReport(context=context).to_dict(references=references)
+def _report(
+    agent_record_id: str, references: tuple[str, ...], teacher_context: str = "100 degrees Celsius."
+) -> AgentRecord:
+    body = TeacherContextReport(teacher_context=teacher_context).to_dict(references=references)
     return AgentRecord.create(
         scenario="science",
         request_type=RequestType.REPORT,
@@ -82,10 +84,8 @@ def _report(agent_record_id: str, references: tuple[str, ...], context: str = "1
     )
 
 
-def _processor(tokenizer: CountingTokenizer | None = None, **config: Any) -> TeacherSequenceProcessor:
-    return TeacherSequenceProcessor(
-        ProcessorContext("science", {"batch_size": 1, **config}, TeacherContextReport), tokenizer
-    )
+def _processor(tokenizer: CountingTokenizer | None = None, **config: Any) -> DistillProcessor:
+    return DistillProcessor(ProcessorContext("science", {"batch_size": 1, **config}, TeacherContextReport), tokenizer)
 
 
 @pytest.mark.unit
@@ -93,7 +93,7 @@ def test_by_default_the_teacher_reads_the_request_as_recorded() -> None:
     tokenizer = CountingTokenizer()
     processor = _processor(tokenizer)
     processor.ingest(_inference("i1"))
-    processor.ingest(_report("r1", ("i1",), context=""))
+    processor.ingest(_report("r1", ("i1",), teacher_context=""))
 
     batch = processor.build_batch()
 
@@ -116,7 +116,7 @@ def test_a_recipe_composes_the_teacher_request_from_the_response_and_the_context
     tokenizer = CountingTokenizer()
     processor = FeedbackProcessor(ProcessorContext("science", {"batch_size": 1}, TeacherContextReport), tokenizer)
     processor.ingest(_inference("i1"))
-    processor.ingest(_report("r1", ("i1",), context="Too low."))
+    processor.ingest(_report("r1", ("i1",), teacher_context="Too low."))
 
     batch = processor.build_batch()
 
@@ -146,7 +146,7 @@ def test_the_processor_skips_and_counts_a_teacher_sequence_over_the_window() -> 
 
     # A later report that fits still trains.
     processor.ingest(short_request)
-    processor.ingest(_report("r2", ("i2",), context="ok"))
+    processor.ingest(_report("r2", ("i2",), teacher_context="ok"))
     assert len(processor.build_batch().items) == 1
     assert processor.operational_metrics()["teacher_overflow_reports"] == 1
 
