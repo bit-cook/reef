@@ -21,7 +21,7 @@ class SDFTRecipe(WeightTrainingRecipe):
     The served model is its own teacher: it reads the request with a
     demonstration added and its next-token distributions over the student's
     on-policy response become the target of a per-token KL. Each report
-    carries one rollout's receipt and the demonstration as ``context``; with
+    carries one rollout's receipt and the demonstration as ``teacher_context``; with
     ``batch_size=1`` a report trains as soon as it arrives.
 
     ``tokenizer_path`` is the served model's tokenizer directory, which renders

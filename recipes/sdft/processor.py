@@ -1,13 +1,14 @@
-"""SDFT's processor: the shared teacher-sequence processor with the demonstration appended to the request."""
+"""SDFT's processor: the shared distillation processor with the demonstration appended to the request."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from reef.core.chat_request import normalize_messages_for_template
-from reef.train.processors import TeacherSequenceProcessor
-from reef.train.processors.teacher_sequence import TeacherPromptTokenizer
+from reef.train.processors import DistillProcessor
+from reef.train.processors.common import flatten_content
+from reef.train.processors.distill import TeacherPromptTokenizer
 from reef.train.types import ProcessorContext
 
 #: The reference implementation's demonstration block (idanshen/Self-Distillation, ``main.py``).
@@ -26,7 +27,39 @@ def context_block_template(config: Mapping[str, Any]) -> str:
     return template
 
 
-class SDFTProcessor(TeacherSequenceProcessor):
+def normalize_messages_for_template(messages: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Messages as a chat template expects them: text content, chat roles, tool arguments as objects."""
+    normalized: list[dict[str, Any]] = []
+    for message in messages:
+        entry = dict(message)
+        if entry.get("role") == "developer":
+            entry["role"] = "system"
+        content = entry.get("content")
+        if content is not None and not isinstance(content, str):
+            entry["content"] = flatten_content(content)
+        if entry.get("tool_calls"):
+            entry["tool_calls"] = [normalize_tool_call(call) for call in entry["tool_calls"]]
+        normalized.append(entry)
+    return normalized
+
+
+def normalize_tool_call(call: Mapping[str, Any]) -> dict[str, Any]:
+    """A tool call with its function arguments as an object, as chat templates render them."""
+    normalized = dict(call)
+    function = normalized.get("function")
+    if isinstance(function, Mapping):
+        function = dict(function)
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                function["arguments"] = json.loads(arguments)
+            except json.JSONDecodeError:
+                function["arguments"] = {}
+        normalized["function"] = function
+    return normalized
+
+
+class SDFTProcessor(DistillProcessor):
     """One rollout and its demonstration, one training unit.
 
     The teacher reads the student's request with the demonstration block
@@ -44,9 +77,9 @@ class SDFTProcessor(TeacherSequenceProcessor):
         super().__init__(context, tokenizer)
 
     def teacher_request(
-        self, messages: list[Any], tools: list[Any] | None, response: str, context: str
+        self, messages: list[Any], tools: list[Any] | None, response: str, teacher_context: str
     ) -> tuple[list[Any], list[Any] | None]:
-        block = self._template.replace(CONTEXT_PLACEHOLDER, context)
+        block = self._template.replace(CONTEXT_PLACEHOLDER, teacher_context)
         rendered = normalize_messages_for_template(messages)
         if rendered and rendered[-1].get("role") == "user":
             last = dict(rendered[-1])

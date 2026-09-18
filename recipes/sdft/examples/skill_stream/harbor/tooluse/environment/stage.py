@@ -6,7 +6,7 @@ For each step of ``PROMPTS_PER_STEP`` training prompts, in the order
     ask     — one chat completion per prompt through Reef at temperature 1.0:
               the student's on-policy sample, recorded with its tokens and
               log-probs
-    report  — the dataset's demonstration as the report's ``context`` against
+    report  — the dataset's demonstration as the report's ``teacher_context`` against
               that sample's receipt
     learn   — Reef's recipe batches the step's reports, runs one optimizer
               step and publishes the weights; the loop blocks on that
@@ -73,7 +73,7 @@ def main() -> None:
         )
         sampled = time.time()
         for (_, demonstration), (_, receipt, _) in zip(wave, outputs, strict=True):
-            client.report(skills.SCENARIO, {"references": [receipt], "metadata": {"context": demonstration}})
+            client.report(skills.SCENARIO, {"references": [receipt], "metadata": {"teacher_context": demonstration}})
         releases = skills.wait_for_training(releases_before + step, TRAIN_TIMEOUT_S)
         finished = time.time()
         print(

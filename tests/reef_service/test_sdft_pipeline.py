@@ -1,7 +1,7 @@
 """Reef-side SDFT pipeline: the demonstration composition, the recipe and the Slime wire payload.
 
 Everything here is torch/ray free so it runs in the minimal CI gate; the
-shared processor is covered in ``test_teacher_sequence.py`` and the tensor
+shared processor is covered in ``test_distill_processor.py`` and the tensor
 kernels in ``test_distill_parity.py``. The teacher prompt tokenizer is a
 fake that counts tokens deterministically, so no model files are needed.
 """
@@ -27,7 +27,7 @@ from reef.recipe.errors import RecipeConfigError
 from reef.recipe.registry import build_recipe, recipe_class_for
 from reef.train import ProcessorContext
 from reef.train.algos import StepScheduling
-from reef.train.processors.teacher_sequence import TeacherPromptTokenizer
+from reef.train.processors.distill import TeacherPromptTokenizer
 from reef.train.slime_backend.data_builder import to_slime_rollout_data
 from reef.train.slime_backend.loss_families import resolve_loss_family
 from reef.train.slime_backend.reef_adapters.preparation import prepare_slime_step
@@ -70,8 +70,10 @@ def _inference(agent_record_id: str, *, messages: list[dict[str, Any]] | None = 
     )
 
 
-def _report(agent_record_id: str, references: tuple[str, ...], context: str = "100 degrees Celsius.") -> AgentRecord:
-    body = TeacherContextReport(context=context).to_dict(references=references)
+def _report(
+    agent_record_id: str, references: tuple[str, ...], teacher_context: str = "100 degrees Celsius."
+) -> AgentRecord:
+    body = TeacherContextReport(teacher_context=teacher_context).to_dict(references=references)
     return AgentRecord.create(
         scenario="science",
         request_type=RequestType.REPORT,

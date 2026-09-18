@@ -13,8 +13,8 @@ forgetting.
 +-------------+------------------------------------------------------------+
 | Evolves     | model weights                                              |
 +-------------+------------------------------------------------------------+
-| Signal      | one report with the demonstration as ``context`` per       |
-|             | rollout                                                    |
+| Signal      | one report with the demonstration as ``teacher_context``   |
+|             | per rollout                                                |
 +-------------+------------------------------------------------------------+
 | Loss family | ``sdft``                                                   |
 +-------------+------------------------------------------------------------+
@@ -42,14 +42,14 @@ With the default ``batch_size`` of 1, each report is one training step.
 
    Rollout :: the student answers a request
    Demonstration :: a reference response for the same request
-   Report :: the demonstration as ``context`` against the rollout's receipt
+   Report :: the demonstration as ``teacher_context`` against the rollout's receipt
    Step* :: distil the demonstration-conditioned teacher on the student's own tokens
    Version :: publish the updated weights to the engine
 
 How Reef implements it
 ----------------------
 
-The processor is the shared ``TeacherSequenceProcessor``
+The processor is the shared ``DistillProcessor``
 (`Processors <../../developer-guide/processors.rst>`__): it turns every
 ``TeacherContextReport`` into one ``TrajectoryItem`` carrying the student's
 recorded tokens plus ``teacher_tokens``, the teacher's request rendered with
@@ -98,15 +98,15 @@ The report contract
 -------------------
 
 A report references one inference record and carries the demonstration as
-``metadata.context``. A ``score`` is optional metadata; the recipe never
-trains on it. The same contract serves SDPO, where the context is the
+``metadata.teacher_context``. A ``score`` is optional metadata; the recipe never
+trains on it. The same contract serves SDPO, where the teacher context is the
 environment feedback instead of a demonstration.
 
 .. code:: json
 
    {
      "references": ["<receipt of the student's request>"],
-     "metadata": {"context": "<the demonstration>"}
+     "metadata": {"teacher_context": "<the demonstration>"}
    }
 
 Configuration

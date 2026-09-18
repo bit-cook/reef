@@ -2,8 +2,8 @@
 
 - ``recipe`` — the SDFT recipe class and its ``WeightTrainingSpec``. Its report
   contract is the shared :class:`reef.core.reports.TeacherContextReport`: a
-  rollout's receipt and its teacher's ``context``.
-- ``processor`` — the shared ``TeacherSequenceProcessor`` with the demonstration
+  rollout's receipt and its ``teacher_context``.
+- ``processor`` — the shared ``DistillProcessor`` with the demonstration
   appended to the recorded request, the reference's layout: one rollout with
   its demonstration, one batch unit.
 - ``objective`` — the backend-agnostic training objective.
